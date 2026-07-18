@@ -1,77 +1,56 @@
-# HotelChat Mobile 1.0
+# HotelChat Mobile 1.0.2
 
-Полноценное Flutter-приложение для Android. Это не WebView.
+Полный исправленный Flutter-проект для автоматической сборки Android APK через GitHub Actions.
 
-## Уже реализовано
+## Что исправлено
 
-- авторизация сотрудников через Bearer-токен;
-- безопасное хранение токена;
-- активные и закрытые обращения;
-- счётчики непрочитанных сообщений;
-- чат с автообновлением;
-- отправка текста и фотографий;
-- быстрые ответы;
-- назначение обращения на себя;
-- статусы «В работе», «Ожидает», «Закрыто»;
-- просмотр изображений гостей;
-- светлая и тёмная системные темы.
+- исправлена синтаксическая ошибка в `HomeScreen.load`;
+- стандартный Flutter-тест больше не мешает анализу;
+- workflow использует актуальные версии GitHub Actions;
+- Android-проект создаётся автоматически;
+- package ID принудительно устанавливается в `online.ognispb.hotelchat`;
+- название приложения устанавливается в `HotelChat`;
+- минимальная версия Android устанавливается в SDK 23;
+- разрешение доступа в интернет проверяется автоматически;
+- перед сборкой выполняется статический анализ;
+- готовый APK, SHA-256 и информация о сборке публикуются в Artifacts.
 
-## Требования для сборки
+## Как загрузить
 
-- Flutter stable;
-- Android Studio с Android SDK;
-- JDK 17;
-- Android 6.0 или новее.
+Распакуйте архив и загрузите **содержимое этой папки** в корень репозитория GitHub.
 
-## Подготовка проекта
-
-Поскольку архив не содержит бинарный Gradle Wrapper JAR, безопаснее всего создать платформенные файлы своей установленной версией Flutter:
-
-```bash
-cd HotelChat-Mobile-1.0-Flutter
-flutter create --platforms=android --org online.ognispb --project-name hotelchat_mobile .
-```
-
-Команда сохраняет `lib/main.dart` и `pubspec.yaml`, но перед выполнением рекомендуется сделать их копию.
-
-Затем:
-
-```bash
-flutter pub get
-flutter analyze
-flutter build apk --release
-```
-
-Готовый APK:
+В корне GitHub должны быть видны:
 
 ```text
-build/app/outputs/flutter-apk/app-release.apk
+.github
+lib
+tool
+pubspec.yaml
+analysis_options.yaml
+README.md
+VERSION
+```
+
+После Commit changes сборка запустится автоматически.
+
+## Как скачать APK
+
+```text
+Actions
+→ Build HotelChat Android APK
+→ зелёный запуск
+→ Artifacts
+→ HotelChat-Mobile-APK-N
 ```
 
 ## Сервер
 
-Сначала установите `HotelChat-Mobile-API-v1.zip` на VPS.
-
-Проверка API:
+Перед входом приложение ожидает API:
 
 ```text
 https://ognispb.online/api/mobile/v1/index.php?route=health
 ```
 
-## Домен
+## Подпись APK
 
-Домен указан в начале `lib/main.dart`:
-
-```dart
-const apiBase = 'https://ognispb.online/api/mobile/v1/index.php';
-```
-
-## Push-уведомления
-
-В 1.0 используется автообновление при открытом приложении. Для фоновых push-уведомлений потребуется Firebase-проект и `google-services.json`.
-
-
-## Автоматическая сборка через GitHub Actions
-
-Проект содержит готовый workflow `.github/workflows/build-apk.yml`.
-Подробная инструкция находится в `GITHUB-ACTIONS-INSTRUCTION-RU.md`.
+Первая версия подходит для тестовой ручной установки. Автоматические обновления поверх уже установленной версии потребуют постоянного закрытого ключа подписи в GitHub Secrets.

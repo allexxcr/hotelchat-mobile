@@ -1,18 +1,18 @@
 name: hotelchat_mobile
 description: HotelChat Mobile for hotel staff
 publish_to: none
-version: 1.0.0+1
+version: 1.0.2+2
 
 environment:
-  sdk: ">=3.6.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
-  dio: ^5.9.0
+  dio: ^5.10.0
   flutter_secure_storage: ^10.3.1
   image_picker: ^1.2.3
-  intl: ^0.20.2
+  intl: ^0.20.3
 
 dev_dependencies:
   flutter_test:
