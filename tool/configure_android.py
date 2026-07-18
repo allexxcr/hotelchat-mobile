@@ -11,7 +11,7 @@ ANDROID = ROOT / "android"
 APP_ID = "online.ognispb.hotelchat"
 APP_LABEL = "HotelChat"
 MIN_SDK = 23
-COMPILE_SDK = 35
+COMPILE_SDK = 36
 TARGET_SDK = 35
 GOOGLE_SERVICES_PLUGIN = "4.5.0"
 

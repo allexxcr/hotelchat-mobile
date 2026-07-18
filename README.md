@@ -1,38 +1,34 @@
-# HotelChat Mobile 1.1.2 — Firebase Self-Copy
+# HotelChat Mobile 1.1.3 — compileSdk 36
 
-Исправляет ошибку:
-
-```text
-ERROR: android/app/google-services.json is missing
-```
-
-## Причина
-
-В репозитории обновился `tool/configure_android.py`, но скрытый workflow
-`.github/workflows/build-apk.yml` остался от старой версии и не скопировал
-Firebase-конфигурацию в Android-проект.
-
-## Исправление
-
-Версия 1.1.2 хранит Firebase-конфигурацию сразу в двух местах:
-
-- `firebase/google-services.json`;
-- `google-services.json`.
-
-Скрипт `tool/configure_android.py` сам находит конфигурацию и копирует её в:
+Исправляет ошибку сборки:
 
 ```text
-android/app/google-services.json
+Dependency 'androidx.core:core:1.18.0' requires compileSdk 36 or later.
+:app is currently compiled against android-35.
 ```
 
-Поэтому сборка больше не зависит от команды копирования внутри workflow.
+## Изменения
 
-## Загрузка
+- `compileSdk = 36`;
+- `targetSdk = 35` оставлен без изменения;
+- `minSdk = 23` оставлен без изменения;
+- GitHub Actions явно устанавливает:
+  - `platforms;android-36`;
+  - `build-tools;36.0.0`;
+  - `platform-tools`;
+- сохранены Firebase, push-диагностика и исправление фотографий.
 
-Загрузите всё содержимое архива в корень репозитория с заменой файлов.
-Особенно важны:
+## Установка
 
-- `tool/configure_android.py`;
-- `firebase/google-services.json`;
-- `google-services.json`;
-- `.github/workflows/build-apk.yml`.
+Загрузите всё содержимое папки в корень существующего GitHub-репозитория,
+подтвердите замену файлов и запустите:
+
+```text
+Actions → Build HotelChat Android APK
+```
+
+В журнале должна появиться строка:
+
+```text
+Android API 36 installed successfully
+```

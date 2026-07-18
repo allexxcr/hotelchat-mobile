@@ -1,0 +1,15 @@
+ОШИБКА:
+androidx.core:core:1.18.0 requires compileSdk 36 or later.
+
+ИСПРАВЛЕНО:
+compileSdk = 36
+targetSdk = 35
+minSdk = 23
+
+ПОРЯДОК:
+1. Распакуйте архив.
+2. Загрузите всё содержимое в корень GitHub-репозитория.
+3. Подтвердите замену файлов.
+4. Нажмите Commit changes.
+5. Запустите Actions → Build HotelChat Android APK.
+6. Скачайте Artifact HotelChat-Mobile-1.1.3-APK-N.

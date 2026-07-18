@@ -14,7 +14,7 @@ import 'firebase_options.dart';
 
 const String apiBase =
     'https://ognispb.online/api/mobile/v1/index.php';
-const String appVersion = '1.1.2';
+const String appVersion = '1.1.3';
 
 final GlobalKey<NavigatorState> appNavigatorKey =
     GlobalKey<NavigatorState>();
