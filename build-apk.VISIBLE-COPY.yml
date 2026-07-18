@@ -70,6 +70,14 @@ jobs:
           rm -rf test
           python3 tool/configure_android.py
 
+          MAIN_ACTIVITY="android/app/src/main/kotlin/online/ognispb/hotelchat/MainActivity.kt"
+          test -f "$MAIN_ACTIVITY"
+          test "$(head -n 1 "$MAIN_ACTIVITY")" = "package online.ognispb.hotelchat"
+          grep -Fxq "import io.flutter.embedding.android.FlutterActivity" "$MAIN_ACTIVITY"
+          grep -Fxq "class MainActivity : FlutterActivity()" "$MAIN_ACTIVITY"
+          echo "Verified Kotlin entry point:"
+          cat "$MAIN_ACTIVITY"
+
       - name: Clean old build caches
         shell: bash
         run: |

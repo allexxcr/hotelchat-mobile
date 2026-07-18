@@ -1,7 +1,17 @@
+HOTELCHAT MOBILE 1.0.4
+
 1. Распакуйте архив.
 2. В GitHub откройте Code → Add file → Upload files.
-3. Загрузите всё содержимое папки поверх существующих файлов.
+3. Загрузите всё содержимое папки поверх текущих файлов.
 4. Нажмите Commit changes.
 5. Откройте Actions → Build HotelChat Android APK.
-6. После зелёной галочки скачайте HotelChat-Mobile-APK-N.
-7. При красной ошибке скачайте Artifact HotelChat-Build-Log-N и передайте файл build-apk.log.
+6. Дождитесь зелёной галочки.
+7. Скачайте HotelChat-Mobile-APK-N в разделе Artifacts.
+
+Критически важные исправленные файлы:
+- tool/configure_android.py
+- .github/workflows/build-apk.yml
+- pubspec.yaml
+
+При необходимости видимая копия workflow:
+- build-apk.VISIBLE-COPY.yml

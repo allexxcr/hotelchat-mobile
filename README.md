@@ -63,3 +63,20 @@ https://ognispb.online/api/mobile/v1/index.php?route=health
 - зависимости больше не обновляются автоматически;
 - перед сборкой удаляются старые Gradle/Kotlin-кэши;
 - полный журнал `build-apk.log` загружается в Artifacts даже при ошибке.
+
+
+## Версия 1.0.4 — исправление MainActivity.kt
+
+Причина предыдущей ошибки Kotlin устранена. Старый скрипт мог удалить перевод
+строки после объявления package и соединить его с import. Теперь MainActivity.kt
+не редактируется, а полностью создаётся заново:
+
+```kotlin
+package online.ognispb.hotelchat
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
+```
+
+Workflow проверяет все три строки до запуска Gradle.
