@@ -1,0 +1,14 @@
+ОШИБКА:
+android/app/google-services.json is missing
+
+ПОРЯДОК:
+1. Распакуйте архив.
+2. Загрузите ВСЁ содержимое в корень GitHub-репозитория.
+3. Убедитесь, что в Code видны:
+   firebase/google-services.json
+   google-services.json
+   tool/configure_android.py
+4. Нажмите Commit changes.
+5. Запустите Actions → Build HotelChat Android APK.
+6. В журнале должна появиться строка:
+   Firebase config copied: ... -> .../android/app/google-services.json

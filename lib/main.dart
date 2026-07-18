@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +14,7 @@ import 'firebase_options.dart';
 
 const String apiBase =
     'https://ognispb.online/api/mobile/v1/index.php';
-const String appVersion = '1.1.0';
+const String appVersion = '1.1.2';
 
 final GlobalKey<NavigatorState> appNavigatorKey =
     GlobalKey<NavigatorState>();
@@ -588,6 +589,108 @@ class PushService {
     }
   }
 
+  Future<Map<String, dynamic>> diagnosticStatus() async {
+    final Map<String, dynamic> result = <String, dynamic>{
+      'appVersion': appVersion,
+      'firebaseProject': 'hotelchat-e9c5f',
+      'packageName': 'online.ognispb.hotelchat',
+      'apiAuthorized': api.token != null,
+    };
+
+    try {
+      final Map<dynamic, dynamic>? nativeStatus =
+          await const MethodChannel('hotelchat/notifications')
+              .invokeMapMethod<dynamic, dynamic>('getStatus');
+      if (nativeStatus != null) {
+        for (final MapEntry<dynamic, dynamic> entry
+            in nativeStatus.entries) {
+          result[entry.key.toString()] = entry.value;
+        }
+      }
+    } catch (error) {
+      result['nativeStatusError'] = error.toString();
+    }
+
+    try {
+      final NotificationSettings settings =
+          await messaging.getNotificationSettings();
+      result['firebaseAuthorizationStatus'] =
+          settings.authorizationStatus.name;
+      result['firebaseAlertSetting'] = settings.alert.name;
+      result['firebaseSoundSetting'] = settings.sound.name;
+    } catch (error) {
+      result['firebaseSettingsError'] = error.toString();
+    }
+
+    try {
+      final String? token = await messaging
+          .getToken()
+          .timeout(const Duration(seconds: 25));
+
+      result['fcmTokenCreated'] =
+          token != null && token.isNotEmpty;
+      result['fcmTokenPreview'] =
+          token == null || token.isEmpty
+              ? ''
+              : '${token.substring(0, token.length > 24 ? 24 : token.length)}…';
+
+      if (token != null && token.isNotEmpty) {
+        _currentToken = token;
+
+        try {
+          await api.registerPushToken(token);
+          result['serverRegistration'] = 'success';
+        } catch (error) {
+          result['serverRegistration'] = 'failed';
+          result['serverRegistrationError'] = error.toString();
+        }
+      }
+    } catch (error) {
+      result['fcmTokenCreated'] = false;
+      result['fcmTokenError'] = error.toString();
+    }
+
+    return result;
+  }
+
+  Future<Map<String, dynamic>> requestPermissionAndRegister() async {
+    final Map<String, dynamic> result = <String, dynamic>{};
+
+    try {
+      final bool? nativeGranted =
+          await const MethodChannel('hotelchat/notifications')
+              .invokeMethod<bool>('requestPermission');
+      result['nativePermissionGranted'] = nativeGranted;
+    } catch (error) {
+      result['nativePermissionError'] = error.toString();
+    }
+
+    try {
+      final NotificationSettings settings =
+          await messaging.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+      result['firebaseAuthorizationStatus'] =
+          settings.authorizationStatus.name;
+    } catch (error) {
+      result['firebasePermissionError'] = error.toString();
+    }
+
+    result.addAll(await diagnosticStatus());
+    return result;
+  }
+
+  Future<void> openNotificationSettings() async {
+    await const MethodChannel('hotelchat/notifications')
+        .invokeMethod<void>('openNotificationSettings');
+  }
+
   Future<void> _registerToken(String token) async {
     _currentToken = token;
 
@@ -936,6 +1039,190 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
+class PushDiagnosticsScreen extends StatefulWidget {
+  const PushDiagnosticsScreen({super.key});
+
+  @override
+  State<PushDiagnosticsScreen> createState() =>
+      _PushDiagnosticsScreenState();
+}
+
+class _PushDiagnosticsScreenState
+    extends State<PushDiagnosticsScreen> {
+  Map<String, dynamic> status = <String, dynamic>{};
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    refresh();
+  }
+
+  Future<void> refresh() async {
+    setState(() => loading = true);
+
+    final Map<String, dynamic> value =
+        await PushService.instance.diagnosticStatus();
+
+    if (!mounted) return;
+    setState(() {
+      status = value;
+      loading = false;
+    });
+  }
+
+  Future<void> requestAndRegister() async {
+    setState(() => loading = true);
+
+    final Map<String, dynamic> value =
+        await PushService.instance.requestPermissionAndRegister();
+
+    if (!mounted) return;
+    setState(() {
+      status = value;
+      loading = false;
+    });
+  }
+
+  String displayValue(dynamic value) {
+    if (value == null) return '—';
+    if (value is bool) return value ? 'да' : 'нет';
+    return value.toString();
+  }
+
+  Widget statusRow(String title, String key) {
+    final dynamic value = status[key];
+    final bool isError = key.toLowerCase().contains('error');
+    final bool isGood = value == true || value == 'success';
+
+    return ListTile(
+      dense: true,
+      title: Text(title),
+      subtitle: Text(
+        displayValue(value),
+        style: TextStyle(
+          color: isError && value != null
+              ? Theme.of(context).colorScheme.error
+              : null,
+          fontWeight: isGood ? FontWeight.w700 : null,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Диагностика уведомлений'),
+      ),
+      body: loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.only(bottom: 24),
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'Здесь видно, вошло ли разрешение в APK, '
+                    'разрешил ли его Android, создался ли FCM-токен '
+                    'и зарегистрировал ли его сервер.',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
+                statusRow('Версия приложения', 'appVersion'),
+                statusRow('Версия Android SDK', 'sdkInt'),
+                statusRow(
+                  'Разрешение объявлено в APK',
+                  'permissionDeclared',
+                ),
+                statusRow(
+                  'Разрешение выдано Android',
+                  'permissionGranted',
+                ),
+                statusRow(
+                  'Уведомления включены системой',
+                  'notificationsEnabled',
+                ),
+                statusRow(
+                  'Канал уведомлений создан',
+                  'channelExists',
+                ),
+                statusRow(
+                  'Важность канала',
+                  'channelImportance',
+                ),
+                statusRow(
+                  'Статус Firebase',
+                  'firebaseAuthorizationStatus',
+                ),
+                statusRow(
+                  'FCM-токен создан',
+                  'fcmTokenCreated',
+                ),
+                statusRow(
+                  'Начало FCM-токена',
+                  'fcmTokenPreview',
+                ),
+                statusRow(
+                  'Регистрация на сервере',
+                  'serverRegistration',
+                ),
+                statusRow(
+                  'Ошибка FCM-токена',
+                  'fcmTokenError',
+                ),
+                statusRow(
+                  'Ошибка регистрации сервера',
+                  'serverRegistrationError',
+                ),
+                statusRow(
+                  'Ошибка нативной проверки',
+                  'nativeStatusError',
+                ),
+                const Divider(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FilledButton.icon(
+                    onPressed: requestAndRegister,
+                    icon: const Icon(Icons.notifications_active),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'Запросить разрешение и зарегистрировать',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      await PushService.instance
+                          .openNotificationSettings();
+                    },
+                    icon: const Icon(Icons.settings),
+                    label: const Text(
+                      'Открыть настройки уведомлений Android',
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextButton.icon(
+                    onPressed: refresh,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Повторить проверку'),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.onLogout,
@@ -1044,12 +1331,28 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           PopupMenuButton<String>(
             onSelected: (String value) {
-              if (value == 'logout') {
+              if (value == 'notifications') {
+                Navigator.push<void>(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) =>
+                        const PushDiagnosticsScreen(),
+                  ),
+                );
+              } else if (value == 'logout') {
                 logout();
               }
             },
             itemBuilder: (BuildContext context) =>
                 const <PopupMenuEntry<String>>[
+              PopupMenuItem<String>(
+                value: 'notifications',
+                child: ListTile(
+                  leading: Icon(Icons.notifications_active_outlined),
+                  title: Text('Диагностика уведомлений'),
+                ),
+              ),
+              PopupMenuDivider(),
               PopupMenuItem<String>(
                 value: 'logout',
                 child: ListTile(

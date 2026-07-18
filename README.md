@@ -1,24 +1,38 @@
-# HotelChat Mobile 1.1.1 — Push Diagnostics
+# HotelChat Mobile 1.1.2 — Firebase Self-Copy
 
-Эта версия предназначена для устранения ситуации, когда Android не позволяет
-включить уведомления и сервер показывает `active_devices=0`.
+Исправляет ошибку:
 
-## Что изменено
+```text
+ERROR: android/app/google-services.json is missing
+```
 
-- `compileSdk` и `targetSdk` зафиксированы на API 35;
-- `POST_NOTIFICATIONS` объявляется в AndroidManifest;
-- нативный Android-код запрашивает разрешение;
-- создан высокоприоритетный канал `hotelchat_messages`;
-- добавлен экран `Диагностика уведомлений`;
-- экран показывает наличие разрешения в APK, состояние Android, канала,
-  FCM-токена и регистрации на сервере;
-- можно повторно запросить разрешение и открыть системные настройки;
-- GitHub Actions проверяет итоговый APK командой `aapt`;
-- в Artifact добавляется `apk-diagnostics.txt`.
+## Причина
 
-## После установки
+В репозитории обновился `tool/configure_android.py`, но скрытый workflow
+`.github/workflows/build-apk.yml` остался от старой версии и не скопировал
+Firebase-конфигурацию в Android-проект.
 
-1. Откройте HotelChat и войдите.
-2. В правом верхнем меню выберите `Диагностика уведомлений`.
-3. Нажмите `Запросить разрешение и зарегистрировать`.
-4. Пришлите скриншот всего экрана диагностики.
+## Исправление
+
+Версия 1.1.2 хранит Firebase-конфигурацию сразу в двух местах:
+
+- `firebase/google-services.json`;
+- `google-services.json`.
+
+Скрипт `tool/configure_android.py` сам находит конфигурацию и копирует её в:
+
+```text
+android/app/google-services.json
+```
+
+Поэтому сборка больше не зависит от команды копирования внутри workflow.
+
+## Загрузка
+
+Загрузите всё содержимое архива в корень репозитория с заменой файлов.
+Особенно важны:
+
+- `tool/configure_android.py`;
+- `firebase/google-services.json`;
+- `google-services.json`;
+- `.github/workflows/build-apk.yml`.

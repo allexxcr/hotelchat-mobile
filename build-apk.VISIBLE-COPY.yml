@@ -55,6 +55,8 @@ jobs:
           cp lib/firebase_options.dart /tmp/firebase-options.dart
           cp pubspec.yaml /tmp/hotelchat-pubspec.yaml
           cp analysis_options.yaml /tmp/hotelchat-analysis-options.yaml
+          test -s firebase/google-services.json
+          cp firebase/google-services.json /tmp/google-services.json
 
           rm -rf android test
 
@@ -69,10 +71,17 @@ jobs:
           cp /tmp/firebase-options.dart lib/firebase_options.dart
           cp /tmp/hotelchat-pubspec.yaml pubspec.yaml
           cp /tmp/hotelchat-analysis-options.yaml analysis_options.yaml
-          cp firebase/google-services.json android/app/google-services.json
+          install -D -m 0644             /tmp/google-services.json             firebase/google-services.json
 
           rm -rf test
+
+          echo "Firebase files before Android configuration:"
+          find . -maxdepth 3 -type f -name 'google-services.json' -print -exec ls -l {} \;
+
           python3 tool/configure_android.py
+
+          echo "Firebase file inside Android project:"
+          ls -l android/app/google-services.json
 
       - name: Install Flutter packages
         run: flutter pub get
@@ -87,7 +96,7 @@ jobs:
           flutter build apk \
             --release \
             --build-number "$GITHUB_RUN_NUMBER" \
-            --build-name "1.1.1.$GITHUB_RUN_NUMBER" \
+            --build-name "1.1.2.$GITHUB_RUN_NUMBER" \
             --verbose 2>&1 | tee build-apk.log
 
       - name: Upload build log
@@ -129,7 +138,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          APK_NAME="HotelChat-Mobile-1.1.1-${GITHUB_RUN_NUMBER}.apk"
+          APK_NAME="HotelChat-Mobile-1.1.2-${GITHUB_RUN_NUMBER}.apk"
 
           cp \
             build/app/outputs/flutter-apk/app-release.apk \
@@ -141,7 +150,7 @@ jobs:
           )
 
           {
-            echo "HotelChat Mobile 1.1.1 Push Diagnostics"
+            echo "HotelChat Mobile 1.1.2 Firebase Self-Copy"
             echo "Build: ${GITHUB_RUN_NUMBER}"
             echo "Commit: ${GITHUB_SHA}"
             echo "Firebase project: hotelchat-e9c5f"
@@ -151,7 +160,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: HotelChat-Mobile-1.1.1-APK-${{ github.run_number }}
+          name: HotelChat-Mobile-1.1.2-APK-${{ github.run_number }}
           path: |
             release/*.apk
             release/*.sha256

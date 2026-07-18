@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import re
+import shutil
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,8 @@ ANDROID = ROOT / "android"
 APP_ID = "online.ognispb.hotelchat"
 APP_LABEL = "HotelChat"
 MIN_SDK = 23
+COMPILE_SDK = 35
+TARGET_SDK = 35
 GOOGLE_SERVICES_PLUGIN = "4.5.0"
 
 
@@ -27,6 +30,36 @@ def insert_plugin(text: str, line: str) -> str:
         fail("Gradle plugins block was not found")
 
     return text[:match.end()] + "\n    " + line + text[match.end():]
+
+
+
+def configure_google_services() -> None:
+    """Copy Firebase config independently of the GitHub workflow."""
+    source_candidates = [
+        ROOT / "firebase" / "google-services.json",
+        ROOT / "google-services.json",
+    ]
+    source = next(
+        (path for path in source_candidates if path.is_file()),
+        None,
+    )
+
+    if source is None:
+        checked = ", ".join(str(path) for path in source_candidates)
+        fail(
+            "Firebase config was not found. Checked: "
+            + checked
+            + ". Upload firebase/google-services.json to GitHub."
+        )
+
+    target = ANDROID / "app" / "google-services.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, target)
+
+    if not target.is_file() or target.stat().st_size < 100:
+        fail("Unable to copy android/app/google-services.json")
+
+    print(f"Firebase config copied: {source} -> {target}")
 
 
 def configure_settings() -> None:
@@ -78,14 +111,32 @@ def configure_gradle() -> None:
             text,
             count=1,
         )
+        text, count_compile_sdk = re.subn(
+            r'compileSdk\s*=\s*(?:flutter\.compileSdkVersion|\d+)',
+            f'compileSdk = {COMPILE_SDK}',
+            text,
+            count=1,
+        )
         text, count_min_sdk = re.subn(
             r'minSdk\s*=\s*(?:flutter\.minSdkVersion|\d+)',
             f'minSdk = {MIN_SDK}',
             text,
             count=1,
         )
+        text, count_target_sdk = re.subn(
+            r'targetSdk\s*=\s*(?:flutter\.targetSdkVersion|\d+)',
+            f'targetSdk = {TARGET_SDK}',
+            text,
+            count=1,
+        )
 
-        if not all((count_namespace, count_app_id, count_min_sdk)):
+        if not all((
+            count_namespace,
+            count_app_id,
+            count_compile_sdk,
+            count_min_sdk,
+            count_target_sdk,
+        )):
             fail("Expected Android values missing in build.gradle.kts")
 
         kotlin_file.write_text(text, encoding="utf-8")
@@ -109,14 +160,32 @@ def configure_gradle() -> None:
             text,
             count=1,
         )
+        text, count_compile_sdk = re.subn(
+            r'compileSdk(?:Version)?\s+(?:flutter\.compileSdkVersion|\d+)',
+            f'compileSdkVersion {COMPILE_SDK}',
+            text,
+            count=1,
+        )
         text, count_min_sdk = re.subn(
             r'minSdkVersion\s+(?:flutter\.minSdkVersion|\d+)',
             f'minSdkVersion {MIN_SDK}',
             text,
             count=1,
         )
+        text, count_target_sdk = re.subn(
+            r'targetSdkVersion\s+(?:flutter\.targetSdkVersion|\d+)',
+            f'targetSdkVersion {TARGET_SDK}',
+            text,
+            count=1,
+        )
 
-        if not all((count_namespace, count_app_id, count_min_sdk)):
+        if not all((
+            count_namespace,
+            count_app_id,
+            count_compile_sdk,
+            count_min_sdk,
+            count_target_sdk,
+        )):
             fail("Expected Android values missing in build.gradle")
 
         groovy_file.write_text(text, encoding="utf-8")
@@ -144,16 +213,49 @@ def configure_main_activity() -> None:
     destination.write_text(
         f"""package {APP_ID}
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {{
+    private val channelName = "hotelchat/notifications"
+    private val permissionRequestCode = 4101
+    private var pendingPermissionResult: MethodChannel.Result? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {{
         super.onCreate(savedInstanceState)
+        createNotificationChannel()
+    }}
 
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {{
+        super.configureFlutterEngine(flutterEngine)
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            channelName
+        ).setMethodCallHandler {{ call, result ->
+            when (call.method) {{
+                "getStatus" -> result.success(notificationStatus())
+                "requestPermission" -> requestNotificationPermission(result)
+                "openNotificationSettings" -> {{
+                    openNotificationSettings()
+                    result.success(true)
+                }}
+                else -> result.notImplemented()
+            }}
+        }}
+    }}
+
+    private fun createNotificationChannel() {{
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {{
             val channel = NotificationChannel(
                 "hotelchat_messages",
@@ -163,9 +265,118 @@ class MainActivity : FlutterActivity() {{
             channel.description = "Новые сообщения гостей"
             channel.enableVibration(true)
 
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
         }}
+    }}
+
+    private fun permissionDeclared(): Boolean {{
+        val info = packageManager.getPackageInfo(
+            packageName,
+            PackageManager.GET_PERMISSIONS
+        )
+        return info.requestedPermissions?.contains(
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == true
+    }}
+
+    private fun permissionGranted(): Boolean {{
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+    }}
+
+    private fun notificationStatus(): Map<String, Any?> {{
+        val manager = getSystemService(NotificationManager::class.java)
+        val channel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {{
+            manager.getNotificationChannel("hotelchat_messages")
+        }} else {{
+            null
+        }}
+
+        return mapOf(
+            "sdkInt" to Build.VERSION.SDK_INT,
+            "permissionDeclared" to permissionDeclared(),
+            "permissionGranted" to permissionGranted(),
+            "notificationsEnabled" to
+                NotificationManagerCompat.from(this)
+                    .areNotificationsEnabled(),
+            "channelExists" to
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                    channel != null),
+            "channelImportance" to
+                (channel?.importance ?: -1),
+            "packageNameNative" to packageName
+        )
+    }}
+
+    private fun requestNotificationPermission(
+        result: MethodChannel.Result
+    ) {{
+        createNotificationChannel()
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {{
+            result.success(
+                NotificationManagerCompat.from(this)
+                    .areNotificationsEnabled()
+            )
+            return
+        }}
+
+        if (permissionGranted()) {{
+            result.success(true)
+            return
+        }}
+
+        if (!permissionDeclared()) {{
+            result.error(
+                "PERMISSION_NOT_DECLARED",
+                "POST_NOTIFICATIONS отсутствует в APK",
+                null
+            )
+            return
+        }}
+
+        if (pendingPermissionResult != null) {{
+            result.error(
+                "REQUEST_IN_PROGRESS",
+                "Запрос разрешения уже выполняется",
+                null
+            )
+            return
+        }}
+
+        pendingPermissionResult = result
+        requestPermissions(
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            permissionRequestCode
+        )
+    }}
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {{
+        super.onRequestPermissionsResult(
+            requestCode,
+            permissions,
+            grantResults
+        )
+
+        if (requestCode == permissionRequestCode) {{
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingPermissionResult?.success(granted)
+            pendingPermissionResult = null
+        }}
+    }}
+
+    private fun openNotificationSettings() {{
+        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+        startActivity(intent)
     }}
 }}
 """,
@@ -255,6 +466,17 @@ def verify() -> None:
         fail("App Gradle file missing")
 
     gradle_text = gradle.read_text(encoding="utf-8")
+    if (
+        f"compileSdk = {COMPILE_SDK}" not in gradle_text
+        and f"compileSdkVersion {COMPILE_SDK}" not in gradle_text
+    ):
+        fail("compileSdk was not configured")
+    if (
+        f"targetSdk = {TARGET_SDK}" not in gradle_text
+        and f"targetSdkVersion {TARGET_SDK}" not in gradle_text
+    ):
+        fail("targetSdk was not configured")
+
     for required in (
         APP_ID,
         "com.google.gms.google-services",
@@ -293,12 +515,16 @@ def verify() -> None:
     print(f"  package: {APP_ID}")
     print(f"  google-services plugin: {GOOGLE_SERVICES_PLUGIN}")
     print("  notification channel: hotelchat_messages")
+    print(f"  compileSdk: {COMPILE_SDK}")
+    print(f"  targetSdk: {TARGET_SDK}")
+    print("  native diagnostics channel: hotelchat/notifications")
 
 
 def main() -> None:
     if not ANDROID.exists():
         fail("Run flutter create before this script")
 
+    configure_google_services()
     configure_settings()
     configure_gradle()
     configure_main_activity()
