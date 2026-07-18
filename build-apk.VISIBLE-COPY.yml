@@ -87,7 +87,7 @@ jobs:
           flutter build apk \
             --release \
             --build-number "$GITHUB_RUN_NUMBER" \
-            --build-name "1.1.$GITHUB_RUN_NUMBER" \
+            --build-name "1.1.1.$GITHUB_RUN_NUMBER" \
             --verbose 2>&1 | tee build-apk.log
 
       - name: Upload build log
@@ -99,11 +99,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Verify final APK notification permission
+        shell: bash
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)"
+
+          test -f "$APK"
+          test -x "$AAPT"
+
+          {
+            echo "HotelChat APK notification diagnostics"
+            echo "AAPT: $AAPT"
+            echo
+            "$AAPT" dump badging "$APK"
+            echo
+            "$AAPT" dump permissions "$APK"
+          } | tee apk-diagnostics.txt
+
+          grep -q \
+            "android.permission.POST_NOTIFICATIONS" \
+            apk-diagnostics.txt
+
+          grep -q \
+            "targetSdkVersion:'35'" \
+            apk-diagnostics.txt
+
       - name: Prepare APK artifact
         shell: bash
         run: |
           mkdir -p release
-          APK_NAME="HotelChat-Mobile-1.1-${GITHUB_RUN_NUMBER}.apk"
+          APK_NAME="HotelChat-Mobile-1.1.1-${GITHUB_RUN_NUMBER}.apk"
 
           cp \
             build/app/outputs/flutter-apk/app-release.apk \
@@ -115,7 +141,7 @@ jobs:
           )
 
           {
-            echo "HotelChat Mobile 1.1"
+            echo "HotelChat Mobile 1.1.1 Push Diagnostics"
             echo "Build: ${GITHUB_RUN_NUMBER}"
             echo "Commit: ${GITHUB_SHA}"
             echo "Firebase project: hotelchat-e9c5f"
@@ -125,10 +151,11 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: HotelChat-Mobile-1.1-APK-${{ github.run_number }}
+          name: HotelChat-Mobile-1.1.1-APK-${{ github.run_number }}
           path: |
             release/*.apk
             release/*.sha256
             release/BUILD-INFO.txt
+            apk-diagnostics.txt
           if-no-files-found: error
           retention-days: 30
