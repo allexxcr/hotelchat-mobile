@@ -241,19 +241,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);load();timer=Timer.periodic(const Duration(seconds:12),(_)=>load(silent:true));}
   @override void dispose(){timer?.cancel();WidgetsBinding.instance.removeObserver(this);super.dispose();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)load(silent:true);}
-  Future<void> load({bool silent=false}) async {
-    if (!silent && mounted) setState(() => loading = true);
+  Future<void> load({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() => loading = true);
+    }
+
     try {
       final x = await api.chats(status: selected);
       x.sort((a, b) => b.lastActivity.compareTo(a.lastActivity));
+
+      if (!mounted) return;
+      setState(() {
+        items = x;
+        error = null;
+      });
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          items = x;
-          error = null;
-        });
+        setState(() => error = e.toString());
       }
-    catch(e){if(mounted)setState(()=>error=e.toString());}finally{if(mounted)setState(()=>loading=false);}
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
   }
+
   @override Widget build(BuildContext context)=>Scaffold(
     appBar:AppBar(title:const Text('Обращения'),actions:[
       IconButton(onPressed:load,icon:const Icon(Icons.refresh)),
