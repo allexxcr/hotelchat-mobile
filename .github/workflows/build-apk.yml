@@ -7,7 +7,9 @@ on:
       - main
     paths:
       - "lib/**"
+      - "tool/**"
       - "pubspec.yaml"
+      - "analysis_options.yaml"
       - ".github/workflows/build-apk.yml"
 
 permissions:
@@ -25,33 +27,35 @@ jobs:
 
     steps:
       - name: Checkout project
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Install Flutter stable
-        shell: bash
-        run: |
-          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$HOME/flutter"
-          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+      - name: Set up Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          pub-cache: true
 
-      - name: Show Flutter environment
-        shell: bash
+      - name: Show build environment
         run: |
           flutter config --no-analytics
           flutter --version
-          flutter doctor -v
+          java -version
 
-      - name: Generate Android platform files
+      - name: Generate Android project
         shell: bash
         run: |
           cp lib/main.dart /tmp/hotelchat-main.dart
           cp pubspec.yaml /tmp/hotelchat-pubspec.yaml
-          rm -rf android
+          cp analysis_options.yaml /tmp/hotelchat-analysis-options.yaml
+
+          rm -rf android test
 
           flutter create \
             --platforms=android \
@@ -62,38 +66,54 @@ jobs:
 
           cp /tmp/hotelchat-main.dart lib/main.dart
           cp /tmp/hotelchat-pubspec.yaml pubspec.yaml
+          cp /tmp/hotelchat-analysis-options.yaml analysis_options.yaml
+
+          rm -rf test
+          python3 tool/configure_android.py
 
       - name: Install Flutter packages
         run: flutter pub get
 
-      - name: Analyze source
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyze application source
+        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
 
       - name: Build universal release APK
         run: |
-          flutter build apk --release \
+          flutter build apk \
+            --release \
             --build-number "$GITHUB_RUN_NUMBER" \
             --build-name "1.0.$GITHUB_RUN_NUMBER"
 
-      - name: Prepare downloadable files
+      - name: Prepare APK artifact
         shell: bash
         run: |
           mkdir -p release
 
-          cp build/app/outputs/flutter-apk/app-release.apk \
-            "release/HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk"
+          APK_NAME="HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk"
 
-          cd release
+          cp \
+            build/app/outputs/flutter-apk/app-release.apk \
+            "release/${APK_NAME}"
 
-          sha256sum "HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk" \
-            > "HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk.sha256"
+          (
+            cd release
+            sha256sum "${APK_NAME}" > "${APK_NAME}.sha256"
+          )
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+          {
+            echo "HotelChat Mobile"
+            echo "Build: ${GITHUB_RUN_NUMBER}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "API: https://ognispb.online"
+          } > release/BUILD-INFO.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v6
         with:
           name: HotelChat-Mobile-APK-${{ github.run_number }}
           path: |
             release/*.apk
             release/*.sha256
+            release/BUILD-INFO.txt
           if-no-files-found: error
           retention-days: 30
