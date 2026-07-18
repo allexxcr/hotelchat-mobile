@@ -1,25 +1,8 @@
-name: hotelchat_mobile
-description: HotelChat Mobile for hotel staff
-publish_to: none
-version: 1.1.0+10
-
-environment:
-  sdk: ">=3.10.0 <4.0.0"
-
-dependencies:
-  flutter:
-    sdk: flutter
-  dio: 5.7.0
-  firebase_core: 4.12.1
-  firebase_messaging: 16.4.3
-  flutter_secure_storage: 9.2.4
-  image_picker: 1.1.2
-  intl: 0.19.0
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: 5.0.0
-
-flutter:
-  uses-material-design: true
+1. Распакуйте архив.
+2. Загрузите ВСЁ содержимое папки в корень GitHub-репозитория.
+3. Подтвердите замену существующих файлов.
+4. Нажмите Commit changes.
+5. Откройте Actions → Build HotelChat Android APK.
+6. После зелёной галочки скачайте Artifact HotelChat-Mobile-1.1-APK-N.
+7. Установите APK поверх текущей версии, если подпись совпадает.
+   При другой подписи Android потребует удалить старую версию.

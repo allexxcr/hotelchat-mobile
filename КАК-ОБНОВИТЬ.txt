@@ -1,134 +1,17 @@
-name: Build HotelChat Android APK
+HOTELCHAT MOBILE 1.0.4
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "lib/**"
-      - "firebase/**"
-      - "tool/**"
-      - "pubspec.yaml"
-      - "analysis_options.yaml"
-      - ".github/workflows/build-apk.yml"
+1. Распакуйте архив.
+2. В GitHub откройте Code → Add file → Upload files.
+3. Загрузите всё содержимое папки поверх текущих файлов.
+4. Нажмите Commit changes.
+5. Откройте Actions → Build HotelChat Android APK.
+6. Дождитесь зелёной галочки.
+7. Скачайте HotelChat-Mobile-APK-N в разделе Artifacts.
 
-permissions:
-  contents: read
+Критически важные исправленные файлы:
+- tool/configure_android.py
+- .github/workflows/build-apk.yml
+- pubspec.yaml
 
-concurrency:
-  group: hotelchat-apk-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  build-apk:
-    name: Build release APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 55
-
-    steps:
-      - name: Checkout project
-        uses: actions/checkout@v6
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Flutter 3.44.0
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.44.0
-
-      - name: Show build environment
-        run: |
-          flutter config --no-analytics
-          flutter --version
-          java -version
-
-      - name: Generate Android project with Firebase
-        shell: bash
-        run: |
-          cp lib/main.dart /tmp/hotelchat-main.dart
-          cp lib/firebase_options.dart /tmp/firebase-options.dart
-          cp pubspec.yaml /tmp/hotelchat-pubspec.yaml
-          cp analysis_options.yaml /tmp/hotelchat-analysis-options.yaml
-
-          rm -rf android test
-
-          flutter create \
-            --platforms=android \
-            --org online.ognispb \
-            --project-name hotelchat_mobile \
-            --no-pub \
-            .
-
-          cp /tmp/hotelchat-main.dart lib/main.dart
-          cp /tmp/firebase-options.dart lib/firebase_options.dart
-          cp /tmp/hotelchat-pubspec.yaml pubspec.yaml
-          cp /tmp/hotelchat-analysis-options.yaml analysis_options.yaml
-          cp firebase/google-services.json android/app/google-services.json
-
-          rm -rf test
-          python3 tool/configure_android.py
-
-      - name: Install Flutter packages
-        run: flutter pub get
-
-      - name: Analyze application source
-        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
-
-      - name: Build universal release APK
-        shell: bash
-        run: |
-          set -o pipefail
-          flutter build apk \
-            --release \
-            --build-number "$GITHUB_RUN_NUMBER" \
-            --build-name "1.1.$GITHUB_RUN_NUMBER" \
-            --verbose 2>&1 | tee build-apk.log
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: HotelChat-Build-Log-${{ github.run_number }}
-          path: build-apk.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Prepare APK artifact
-        shell: bash
-        run: |
-          mkdir -p release
-          APK_NAME="HotelChat-Mobile-1.1-${GITHUB_RUN_NUMBER}.apk"
-
-          cp \
-            build/app/outputs/flutter-apk/app-release.apk \
-            "release/${APK_NAME}"
-
-          (
-            cd release
-            sha256sum "${APK_NAME}" > "${APK_NAME}.sha256"
-          )
-
-          {
-            echo "HotelChat Mobile 1.1"
-            echo "Build: ${GITHUB_RUN_NUMBER}"
-            echo "Commit: ${GITHUB_SHA}"
-            echo "Firebase project: hotelchat-e9c5f"
-            echo "API: https://ognispb.online"
-          } > release/BUILD-INFO.txt
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v6
-        with:
-          name: HotelChat-Mobile-1.1-APK-${{ github.run_number }}
-          path: |
-            release/*.apk
-            release/*.sha256
-            release/BUILD-INFO.txt
-          if-no-files-found: error
-          retention-days: 30
+При необходимости видимая копия workflow:
+- build-apk.VISIBLE-COPY.yml

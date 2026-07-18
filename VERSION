@@ -1,9 +1,1 @@
-.dart_tool/
-.packages
-.pub/
-build/
-android/.gradle/
-android/local.properties
-*.jks
-key.properties
-release/
+1.1.0

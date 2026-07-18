@@ -1,16 +1,41 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import 'firebase_options.dart';
+
 const String apiBase =
     'https://ognispb.online/api/mobile/v1/index.php';
+const String appVersion = '1.1.0';
 
-void main() {
+final GlobalKey<NavigatorState> appNavigatorKey =
+    GlobalKey<NavigatorState>();
+final ValueNotifier<int> chatRefreshSignal = ValueNotifier<int>(0);
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(
+  RemoteMessage message,
+) async {
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+}
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  FirebaseMessaging.onBackgroundMessage(
+    firebaseMessagingBackgroundHandler,
+  );
   runApp(const HotelChatApp());
 }
 
@@ -299,6 +324,47 @@ class ApiClient {
     }
   }
 
+  Future<void> registerPushToken(String fcmToken) async {
+    try {
+      await _unwrap(
+        await dio.post(
+          apiBase,
+          queryParameters: const <String, String>{
+            'route': 'push/register',
+          },
+          data: <String, String>{
+            'fcm_token': fcmToken,
+            'platform': 'android',
+            'device_name': 'HotelChat Android',
+            'app_version': appVersion,
+          },
+          options: authOptions,
+        ),
+      );
+    } on DioException catch (error) {
+      throw ApiException(_dioError(error));
+    }
+  }
+
+  Future<void> unregisterPushToken(String fcmToken) async {
+    try {
+      await _unwrap(
+        await dio.post(
+          apiBase,
+          queryParameters: const <String, String>{
+            'route': 'push/unregister',
+          },
+          data: <String, String>{
+            'fcm_token': fcmToken,
+          },
+          options: authOptions,
+        ),
+      );
+    } on DioException catch (error) {
+      throw ApiException(_dioError(error));
+    }
+  }
+
   Future<void> logout() async {
     try {
       if (token != null) {
@@ -453,6 +519,162 @@ class QuickReply {
   final String bodyRu;
 }
 
+class PushService {
+  PushService._();
+
+  static final PushService instance = PushService._();
+
+  final FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+  StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  StreamSubscription<RemoteMessage>? _openedSubscription;
+
+  String? _currentToken;
+  int? _pendingChatId;
+  bool _listenersReady = false;
+  bool _initialMessageChecked = false;
+  bool _permissionRequested = false;
+
+  Future<void> initializeForSignedInUser() async {
+    try {
+      await messaging.setAutoInitEnabled(true);
+
+      if (!_permissionRequested) {
+        _permissionRequested = true;
+        await messaging.requestPermission(
+          alert: true,
+          announcement: false,
+          badge: true,
+          carPlay: false,
+          criticalAlert: false,
+          provisional: false,
+          sound: true,
+        );
+      }
+
+      if (!_listenersReady) {
+        _listenersReady = true;
+
+        _tokenSubscription =
+            messaging.onTokenRefresh.listen((String token) {
+          _registerToken(token);
+        });
+
+        _foregroundSubscription =
+            FirebaseMessaging.onMessage.listen(_handleForeground);
+
+        _openedSubscription =
+            FirebaseMessaging.onMessageOpenedApp.listen(_handleOpen);
+      }
+
+      final String? token = await messaging.getToken();
+      if (token != null && token.isNotEmpty) {
+        await _registerToken(token);
+      }
+
+      if (!_initialMessageChecked) {
+        _initialMessageChecked = true;
+        final RemoteMessage? initialMessage =
+            await messaging.getInitialMessage();
+        if (initialMessage != null) {
+          _handleOpen(initialMessage);
+        }
+      }
+
+      openPendingChat();
+    } catch (error) {
+      debugPrint('FCM initialization error: $error');
+    }
+  }
+
+  Future<void> _registerToken(String token) async {
+    _currentToken = token;
+
+    if (api.token == null) return;
+
+    try {
+      await api.registerPushToken(token);
+    } catch (error) {
+      debugPrint('FCM token registration error: $error');
+    }
+  }
+
+  Future<void> unregisterCurrentToken() async {
+    final String? token = _currentToken;
+
+    if (token == null || api.token == null) return;
+
+    try {
+      await api.unregisterPushToken(token);
+    } catch (error) {
+      debugPrint('FCM token unregister error: $error');
+    }
+  }
+
+  void _handleForeground(RemoteMessage message) {
+    chatRefreshSignal.value++;
+
+    final int? chatId = _chatId(message);
+    final String title =
+        message.notification?.title ?? 'Новое сообщение';
+    final String body =
+        message.notification?.body ?? 'Откройте HotelChat';
+
+    final BuildContext? context = appNavigatorKey.currentContext;
+    if (context == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$title\n$body'),
+        action: chatId == null
+            ? null
+            : SnackBarAction(
+                label: 'Открыть',
+                onPressed: () => _openChat(chatId),
+              ),
+      ),
+    );
+  }
+
+  void _handleOpen(RemoteMessage message) {
+    final int? chatId = _chatId(message);
+    if (chatId != null) {
+      _openChat(chatId);
+    }
+  }
+
+  int? _chatId(RemoteMessage message) {
+    final dynamic raw = message.data['chat_id'];
+    return raw == null ? null : int.tryParse(raw.toString());
+  }
+
+  void _openChat(int chatId) {
+    if (api.token == null || appNavigatorKey.currentState == null) {
+      _pendingChatId = chatId;
+      return;
+    }
+
+    _pendingChatId = null;
+    appNavigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => ChatScreen(
+          chatId: chatId,
+        ),
+      ),
+    );
+  }
+
+  void openPendingChat() {
+    final int? chatId = _pendingChatId;
+    if (chatId == null) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _openChat(chatId);
+    });
+  }
+}
+
 final ApiClient api = ApiClient();
 
 class HotelChatApp extends StatefulWidget {
@@ -486,12 +708,19 @@ class _HotelChatAppState extends State<HotelChatApp> {
 
     if (mounted) {
       setState(() => ready = true);
+
+      if (loggedIn) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          PushService.instance.initializeForSignedInUser();
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       title: 'HotelChat',
       theme: ThemeData(
@@ -519,6 +748,9 @@ class _HotelChatAppState extends State<HotelChatApp> {
               : LoginScreen(
                   onLogin: () {
                     setState(() => loggedIn = true);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      PushService.instance.initializeForSignedInUser();
+                    });
                   },
                 ),
     );
@@ -724,11 +956,14 @@ class _HomeScreenState extends State<HomeScreen>
   String selectedStatus = 'open';
   Timer? timer;
   String? error;
+  late final VoidCallback pushRefreshListener;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    pushRefreshListener = () => load(silent: true);
+    chatRefreshSignal.addListener(pushRefreshListener);
     load();
     timer = Timer.periodic(
       const Duration(seconds: 12),
@@ -739,6 +974,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     timer?.cancel();
+    chatRefreshSignal.removeListener(pushRefreshListener);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -787,6 +1023,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> logout() async {
+    await PushService.instance.unregisterCurrentToken();
     await api.logout();
 
     if (mounted) {
@@ -1011,6 +1248,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool sending = false;
   bool polling = false;
   Timer? timer;
+  XFile? pendingImage;
   List<QuickReply> replies = <QuickReply>[];
 
   @override
@@ -1107,8 +1345,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Future<void> send({XFile? image}) async {
+  Future<void> send() async {
     final String text = messageController.text.trim();
+    final XFile? image = pendingImage;
 
     if (sending || (text.isEmpty && image == null)) return;
 
@@ -1123,6 +1362,7 @@ class _ChatScreenState extends State<ChatScreen> {
       messageController.clear();
 
       setState(() {
+        pendingImage = null;
         details!.messages.add(message);
       });
 
@@ -1137,14 +1377,43 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> pickImage() async {
-    final XFile? image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 82,
-      maxWidth: 1920,
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (BuildContext context) => SafeArea(
+        child: Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Выбрать из галереи'),
+              onTap: () => Navigator.pop(
+                context,
+                ImageSource.gallery,
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Сделать фотографию'),
+              onTap: () => Navigator.pop(
+                context,
+                ImageSource.camera,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
 
-    if (image != null) {
-      await send(image: image);
+    if (source == null) return;
+
+    final XFile? image = await ImagePicker().pickImage(
+      source: source,
+      imageQuality: 82,
+      maxWidth: 1920,
+      maxHeight: 1920,
+    );
+
+    if (image != null && mounted) {
+      setState(() => pendingImage = image);
     }
   }
 
@@ -1363,6 +1632,57 @@ class _ChatScreenState extends State<ChatScreen> {
                           },
                         ),
                       ),
+                    if (pendingImage != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(10, 4, 10, 2),
+                        child: Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(8),
+                            child: Row(
+                              children: <Widget>[
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Image.file(
+                                    File(pendingImage!.path),
+                                    width: 72,
+                                    height: 72,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (
+                                      BuildContext context,
+                                      Object error,
+                                      StackTrace? stackTrace,
+                                    ) =>
+                                        const SizedBox(
+                                      width: 72,
+                                      height: 72,
+                                      child: Icon(Icons.broken_image),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    pendingImage!.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                IconButton(
+                                  onPressed: sending
+                                      ? null
+                                      : () {
+                                          setState(() {
+                                            pendingImage = null;
+                                          });
+                                        },
+                                  tooltip: 'Убрать фотографию',
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     SafeArea(
                       top: false,
                       child: Padding(
@@ -1373,7 +1693,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             IconButton(
                               onPressed:
                                   sending ? null : () => pickImage(),
-                              tooltip: 'Отправить фотографию',
+                              tooltip: 'Прикрепить фотографию',
                               icon:
                                   const Icon(Icons.photo_outlined),
                             ),

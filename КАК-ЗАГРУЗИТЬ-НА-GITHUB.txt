@@ -1,5 +1,18 @@
-include: package:flutter_lints/flutter.yaml
+HOTELCHAT MOBILE — ПОЛНАЯ ЗАМЕНА ФАЙЛОВ
 
-analyzer:
-  exclude:
-    - build/**
+1. Распакуйте этот архив.
+2. Откройте GitHub → репозиторий hotelchat-mobile → Code.
+3. Нажмите Add file → Upload files.
+4. Перетащите всё содержимое папки HotelChat-Mobile-1.0.2-FULL-GitHub-Ready.
+5. Подтвердите замену существующих файлов.
+6. Нажмите Commit changes.
+7. Откройте Actions → Build HotelChat Android APK.
+8. Дождитесь зелёной галочки.
+9. Внизу запуска скачайте Artifact HotelChat-Mobile-APK-N.
+
+ОБЯЗАТЕЛЬНЫЙ ФАЙЛ:
+.github/workflows/build-apk.yml
+
+Если папка .github не отображается при выборе файлов:
+откройте её отдельно и перетащите файл build-apk.yml в уже существующую
+папку .github/workflows репозитория.
