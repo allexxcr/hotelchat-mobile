@@ -1,0 +1,99 @@
+name: Build HotelChat Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - ".github/workflows/build-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hotelchat-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Flutter stable
+        shell: bash
+        run: |
+          git clone --depth 1 --branch stable https://github.com/flutter/flutter.git "$HOME/flutter"
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Show Flutter environment
+        shell: bash
+        run: |
+          flutter config --no-analytics
+          flutter --version
+          flutter doctor -v
+
+      - name: Generate Android platform files
+        shell: bash
+        run: |
+          cp lib/main.dart /tmp/hotelchat-main.dart
+          cp pubspec.yaml /tmp/hotelchat-pubspec.yaml
+          rm -rf android
+
+          flutter create \
+            --platforms=android \
+            --org online.ognispb \
+            --project-name hotelchat_mobile \
+            --no-pub \
+            .
+
+          cp /tmp/hotelchat-main.dart lib/main.dart
+          cp /tmp/hotelchat-pubspec.yaml pubspec.yaml
+
+      - name: Install Flutter packages
+        run: flutter pub get
+
+      - name: Analyze source
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build universal release APK
+        run: |
+          flutter build apk --release \
+            --build-number "$GITHUB_RUN_NUMBER" \
+            --build-name "1.0.$GITHUB_RUN_NUMBER"
+
+      - name: Prepare downloadable files
+        shell: bash
+        run: |
+          mkdir -p release
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+            "release/HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk"
+
+          cd release
+
+          sha256sum "HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk" \
+            > "HotelChat-Mobile-${GITHUB_RUN_NUMBER}.apk.sha256"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HotelChat-Mobile-APK-${{ github.run_number }}
+          path: |
+            release/*.apk
+            release/*.sha256
+          if-no-files-found: error
+          retention-days: 30
