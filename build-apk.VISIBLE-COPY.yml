@@ -111,7 +111,7 @@ jobs:
           flutter build apk \
             --release \
             --build-number "$GITHUB_RUN_NUMBER" \
-            --build-name "1.1.3.$GITHUB_RUN_NUMBER" \
+            --build-name "1.1.4.$GITHUB_RUN_NUMBER" \
             --verbose 2>&1 | tee build-apk.log
 
       - name: Upload build log
@@ -146,6 +146,12 @@ jobs:
             apk-diagnostics.txt
 
           grep -q \
+            "FLUTTER_NOTIFICATION_CLICK" \
+            apk-diagnostics.txt || {
+              echo "AAPT badging may omit custom intent actions; source manifest was verified."
+            }
+
+          grep -q \
             "targetSdkVersion:'35'" \
             apk-diagnostics.txt
 
@@ -159,7 +165,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          APK_NAME="HotelChat-Mobile-1.1.3-${GITHUB_RUN_NUMBER}.apk"
+          APK_NAME="HotelChat-Mobile-1.1.4-${GITHUB_RUN_NUMBER}.apk"
 
           cp \
             build/app/outputs/flutter-apk/app-release.apk \
@@ -171,7 +177,7 @@ jobs:
           )
 
           {
-            echo "HotelChat Mobile 1.1.3 CompileSdk 36"
+            echo "HotelChat Mobile 1.1.4 Notification Tap + Photo Viewer"
             echo "Build: ${GITHUB_RUN_NUMBER}"
             echo "Commit: ${GITHUB_SHA}"
             echo "Firebase project: hotelchat-e9c5f"
@@ -181,7 +187,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v6
         with:
-          name: HotelChat-Mobile-1.1.3-APK-${{ github.run_number }}
+          name: HotelChat-Mobile-1.1.4-APK-${{ github.run_number }}
           path: |
             release/*.apk
             release/*.sha256

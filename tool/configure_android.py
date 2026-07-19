@@ -416,6 +416,25 @@ def configure_manifest() -> None:
                 + text[manifest_end + 1:]
             )
 
+    click_filter = """            <intent-filter>
+                <action android:name="FLUTTER_NOTIFICATION_CLICK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+"""
+    if "FLUTTER_NOTIFICATION_CLICK" not in text:
+        activity_match = re.search(
+            r'<activity\b[^>]*android:name="\.MainActivity"[^>]*>',
+            text,
+        )
+        if not activity_match:
+            fail("MainActivity tag missing in AndroidManifest.xml")
+        text = (
+            text[:activity_match.end()]
+            + "\n"
+            + click_filter
+            + text[activity_match.end():]
+        )
+
     metadata = """        <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="hotelchat_messages" />
@@ -506,6 +525,7 @@ def verify() -> None:
         "android.permission.INTERNET",
         "android.permission.POST_NOTIFICATIONS",
         "default_notification_channel_id",
+        "FLUTTER_NOTIFICATION_CLICK",
         'android:label="HotelChat"',
     ):
         if required not in manifest:

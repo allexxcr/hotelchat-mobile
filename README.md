@@ -1,34 +1,24 @@
-# HotelChat Mobile 1.1.3 — compileSdk 36
+# HotelChat Mobile 1.1.4
 
-Исправляет ошибку сборки:
+## Исправления
 
-```text
-Dependency 'androidx.core:core:1.18.0' requires compileSdk 36 or later.
-:app is currently compiled against android-35.
-```
+### Нажатие уведомления
 
-## Изменения
+- нажатие системного push открывает HotelChat;
+- для уведомления с `chat_id` открывается соответствующее обращение;
+- работает при свёрнутом и полностью закрытом приложении;
+- добавлен Android intent-filter `FLUTTER_NOTIFICATION_CLICK`;
+- сохранена обработка `FirebaseMessaging.onMessageOpenedApp`;
+- сохранена обработка холодного запуска через `getInitialMessage()`.
 
-- `compileSdk = 36`;
-- `targetSdk = 35` оставлен без изменения;
-- `minSdk = 23` оставлен без изменения;
-- GitHub Actions явно устанавливает:
-  - `platforms;android-36`;
-  - `build-tools;36.0.0`;
-  - `platform-tools`;
-- сохранены Firebase, push-диагностика и исправление фотографий.
+### Просмотр фотографий
 
-## Установка
+- фотография в сообщении стала нажимаемой;
+- открывается полноэкранный просмотр;
+- масштабирование двумя пальцами;
+- двойное нажатие включает и выключает увеличение;
+- изображение можно перемещать после увеличения;
+- кнопка Назад закрывает просмотр.
 
-Загрузите всё содержимое папки в корень существующего GitHub-репозитория,
-подтвердите замену файлов и запустите:
-
-```text
-Actions → Build HotelChat Android APK
-```
-
-В журнале должна появиться строка:
-
-```text
-Android API 36 installed successfully
-```
+Серверный пакет 1.1.4 удаляет устаревший `click_action` из FCM payload,
+чтобы Android использовал стандартный запуск приложения.

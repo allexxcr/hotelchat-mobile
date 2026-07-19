@@ -14,7 +14,7 @@ import 'firebase_options.dart';
 
 const String apiBase =
     'https://ognispb.online/api/mobile/v1/index.php';
-const String appVersion = '1.1.3';
+const String appVersion = '1.1.4';
 
 final GlobalKey<NavigatorState> appNavigatorKey =
     GlobalKey<NavigatorState>();
@@ -741,10 +741,18 @@ class PushService {
   }
 
   void _handleOpen(RemoteMessage message) {
+    chatRefreshSignal.value++;
+
     final int? chatId = _chatId(message);
-    if (chatId != null) {
+    if (chatId != null && chatId > 0) {
       _openChat(chatId);
+      return;
     }
+
+    // Даже тестовое уведомление без chat_id должно открыть приложение.
+    appNavigatorKey.currentState?.popUntil(
+      (Route<dynamic> route) => route.isFirst,
+    );
   }
 
   int? _chatId(RemoteMessage message) {
@@ -753,19 +761,31 @@ class PushService {
   }
 
   void _openChat(int chatId) {
+    if (chatId <= 0) return;
+
     if (api.token == null || appNavigatorKey.currentState == null) {
       _pendingChatId = chatId;
       return;
     }
 
     _pendingChatId = null;
-    appNavigatorKey.currentState!.push<void>(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) => ChatScreen(
-          chatId: chatId,
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final NavigatorState? navigator = appNavigatorKey.currentState;
+      if (navigator == null) {
+        _pendingChatId = chatId;
+        return;
+      }
+
+      navigator.push<void>(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: 'chat/$chatId'),
+          builder: (BuildContext context) => ChatScreen(
+            chatId: chatId,
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   void openPendingChat() {
@@ -1529,6 +1549,114 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
+class FullScreenPhotoViewer extends StatefulWidget {
+  const FullScreenPhotoViewer({
+    super.key,
+    required this.imageUrl,
+    required this.heroTag,
+  });
+
+  final String imageUrl;
+  final String heroTag;
+
+  @override
+  State<FullScreenPhotoViewer> createState() =>
+      _FullScreenPhotoViewerState();
+}
+
+class _FullScreenPhotoViewerState
+    extends State<FullScreenPhotoViewer> {
+  final TransformationController controller =
+      TransformationController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void toggleZoom() {
+    final Matrix4 current = controller.value;
+    if (current != Matrix4.identity()) {
+      controller.value = Matrix4.identity();
+      return;
+    }
+
+    controller.value = Matrix4.identity()..scale(2.5);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Фотография'),
+      ),
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: toggleZoom,
+        child: Center(
+          child: Hero(
+            tag: widget.heroTag,
+            child: InteractiveViewer(
+              transformationController: controller,
+              minScale: 0.8,
+              maxScale: 6,
+              panEnabled: true,
+              scaleEnabled: true,
+              boundaryMargin: const EdgeInsets.all(80),
+              child: Image.network(
+                widget.imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (
+                  BuildContext context,
+                  Widget child,
+                  ImageChunkEvent? progress,
+                ) {
+                  if (progress == null) return child;
+
+                  final int? total = progress.expectedTotalBytes;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: total == null
+                          ? null
+                          : progress.cumulativeBytesLoaded / total,
+                    ),
+                  );
+                },
+                errorBuilder: (
+                  BuildContext context,
+                  Object error,
+                  StackTrace? stackTrace,
+                ) =>
+                    const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(
+                        Icons.broken_image_outlined,
+                        color: Colors.white,
+                        size: 52,
+                      ),
+                      SizedBox(height: 12),
+                      Text(
+                        'Не удалось загрузить фотографию',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     required this.chatId,
@@ -1860,26 +1988,86 @@ class _ChatScreenState extends State<ChatScreen> {
                                     CrossAxisAlignment.start,
                                 children: <Widget>[
                                   if (message.imageUrl != null)
-                                    ClipRRect(
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                      child: Image.network(
-                                        message.imageUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (
-                                          BuildContext context,
-                                          Object error,
-                                          StackTrace? stackTrace,
-                                        ) =>
-                                            const SizedBox(
-                                          height: 120,
-                                          child: Center(
-                                            child: Icon(
-                                              Icons.broken_image,
+                                    Builder(
+                                      builder: (BuildContext context) {
+                                        final String heroTag =
+                                            'message-photo-${message.id}';
+
+                                        return Semantics(
+                                          button: true,
+                                          label:
+                                              'Открыть фотографию на весь экран',
+                                          child: InkWell(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            onTap: () {
+                                              Navigator.push<void>(
+                                                context,
+                                                MaterialPageRoute<void>(
+                                                  builder: (
+                                                    BuildContext context,
+                                                  ) =>
+                                                      FullScreenPhotoViewer(
+                                                    imageUrl:
+                                                        message.imageUrl!,
+                                                    heroTag: heroTag,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                            child: Hero(
+                                              tag: heroTag,
+                                              child: ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                child: ConstrainedBox(
+                                                  constraints:
+                                                      const BoxConstraints(
+                                                    minHeight: 120,
+                                                    maxHeight: 320,
+                                                    minWidth: 160,
+                                                  ),
+                                                  child: Image.network(
+                                                    message.imageUrl!,
+                                                    fit: BoxFit.cover,
+                                                    loadingBuilder: (
+                                                      BuildContext context,
+                                                      Widget child,
+                                                      ImageChunkEvent?
+                                                          progress,
+                                                    ) {
+                                                      if (progress == null) {
+                                                        return child;
+                                                      }
+
+                                                      return const SizedBox(
+                                                        height: 180,
+                                                        child: Center(
+                                                          child:
+                                                              CircularProgressIndicator(),
+                                                        ),
+                                                      );
+                                                    },
+                                                    errorBuilder: (
+                                                      BuildContext context,
+                                                      Object error,
+                                                      StackTrace? stackTrace,
+                                                    ) =>
+                                                        const SizedBox(
+                                                      height: 120,
+                                                      child: Center(
+                                                        child: Icon(
+                                                          Icons.broken_image,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
+                                        );
+                                      },
                                     ),
                                   if (message.body?.isNotEmpty ==
                                       true) ...<Widget>[
